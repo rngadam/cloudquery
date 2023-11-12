@@ -32,10 +32,20 @@ func TestGenInsert(t *testing.T) {
 	sqlQueries := make([]string, len(writeMessages))
 	for i, msg := range writeMessages {
 		r := msg.Record
-		sqlQueries[i], _ = cl.generateSQL(queries, schema.Tables{table}, r)
+		sqlQueries[i], _ = cl.generateSQL(queries, schema.Tables{table}, r, true)
 
 	}
 	elapsedTime := time.Since(startTime) // Calculate elapsed time
-	t.Logf("TestGenInsert took %s", elapsedTime)
+	t.Logf("With caching enabled took %s", elapsedTime)
+	queries = make(map[string]string, 100)
+	startTimeNoCaching := time.Now() // Start the timer
+	sqlQueriesNoCaching := make([]string, len(writeMessages))
+	for i, msg := range writeMessages {
+		r := msg.Record
+		sqlQueriesNoCaching[i], _ = cl.generateSQL(queries, schema.Tables{table}, r, false)
+
+	}
+	elapsedTimeNoCaching := time.Since(startTimeNoCaching) // Calculate elapsed time
+	t.Logf("With caching disabled took %s", elapsedTimeNoCaching)
 
 }
