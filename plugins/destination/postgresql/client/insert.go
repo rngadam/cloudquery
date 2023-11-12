@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/apache/arrow/go/v14/arrow"
 	"github.com/cloudquery/plugin-sdk/v4/message"
 	"github.com/cloudquery/plugin-sdk/v4/schema"
 	"github.com/jackc/pgx/v5"
@@ -42,27 +43,10 @@ func (c *Client) InsertBatch(ctx context.Context, messages message.WriteInserts)
 
 	for _, msg := range messages {
 		r := msg.Record
-		md := r.Schema().Metadata()
-		tableName, ok := md.GetValue(schema.MetadataTableName)
-		if !ok {
-			return fmt.Errorf("table name not found in metadata")
+		sql, err := c.generateSQL(queries, tables, r)
+		if err != nil {
+			return err
 		}
-		if _, ok = c.pgTablesToPKConstraints[tableName]; !ok {
-			return fmt.Errorf("table %s not found", tableName)
-		}
-
-		sql, ok := queries[tableName]
-		if !ok {
-			// cache the query
-			table := tables.Get(tableName) // will always be present, panic should be produced if not
-			if len(table.PrimaryKeysIndexes()) > 0 {
-				sql = c.upsert(table)
-			} else {
-				sql = c.insert(table)
-			}
-			queries[tableName] = sql
-		}
-
 		rows := transformValues(r)
 		for _, rowVals := range rows {
 			batch.Queue(sql, rowVals...)
@@ -186,4 +170,27 @@ func pgErrToStr(err *pgconn.PgError) string {
 	sb.WriteString(", routine: ")
 	sb.WriteString(err.Routine)
 	return sb.String()
+}
+
+func (c *Client) generateSQL(queries map[string]string, tables schema.Tables, r arrow.Record) (string, error) {
+	md := r.Schema().Metadata()
+	tableName, ok := md.GetValue(schema.MetadataTableName)
+	if !ok {
+		return "", fmt.Errorf("table name not found in metadata")
+	}
+	if _, ok = c.pgTablesToPKConstraints[tableName]; !ok {
+		return "", fmt.Errorf("table %s not found", tableName)
+	}
+	sql, ok := queries[tableName]
+	if !ok {
+		// cache the query
+		table := tables.Get("test") // will always be present, panic should be produced if not
+		if len(table.PrimaryKeysIndexes()) > 0 {
+			sql = c.upsert(table)
+		} else {
+			sql = c.insert(table)
+		}
+		queries[tableName] = sql
+	}
+	return sql, nil
 }
