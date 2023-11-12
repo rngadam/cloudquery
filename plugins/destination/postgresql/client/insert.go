@@ -43,7 +43,7 @@ func (c *Client) InsertBatch(ctx context.Context, messages message.WriteInserts)
 
 	for _, msg := range messages {
 		r := msg.Record
-		sql, err := c.generateSQL(queries, tables, r)
+		sql, err := c.generateSQL(queries, tables, r, true)
 		if err != nil {
 			return err
 		}
@@ -172,7 +172,7 @@ func pgErrToStr(err *pgconn.PgError) string {
 	return sb.String()
 }
 
-func (c *Client) generateSQL(queries map[string]string, tables schema.Tables, r arrow.Record) (string, error) {
+func (c *Client) generateSQL(queries map[string]string, tables schema.Tables, r arrow.Record, cachingEnabled bool) (string, error) {
 	md := r.Schema().Metadata()
 	tableName, ok := md.GetValue(schema.MetadataTableName)
 	if !ok {
@@ -181,16 +181,25 @@ func (c *Client) generateSQL(queries map[string]string, tables schema.Tables, r 
 	if _, ok = c.pgTablesToPKConstraints[tableName]; !ok {
 		return "", fmt.Errorf("table %s not found", tableName)
 	}
-	sql, ok := queries[tableName]
-	if !ok {
-		// cache the query
-		table := tables.Get("test") // will always be present, panic should be produced if not
-		if len(table.PrimaryKeysIndexes()) > 0 {
-			sql = c.upsert(table)
-		} else {
-			sql = c.insert(table)
+	if cachingEnabled {
+		sql, ok := queries[tableName]
+		if !ok {
+			// cache the query
+			table := tables.Get("test") // will always be present, panic should be produced if not
+			if len(table.PrimaryKeysIndexes()) > 0 {
+				sql = c.upsert(table)
+			} else {
+				sql = c.insert(table)
+			}
+			queries[tableName] = sql
 		}
-		queries[tableName] = sql
+		return sql, nil
 	}
-	return sql, nil
+	table := tables.Get("test") // will always be present, panic should be produced if not
+	if len(table.PrimaryKeysIndexes()) > 0 {
+		return c.upsert(table), nil
+	} else {
+		return c.insert(table), nil
+	}
+
 }
