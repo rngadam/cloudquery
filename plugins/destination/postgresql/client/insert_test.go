@@ -27,6 +27,9 @@ func TestGenInsert(t *testing.T) {
 		}
 	}
 	cl := Client{}
+	cl.pgTablesToPKConstraints = map[string]string{}
+
+	cl.pgTablesToPKConstraints["test"] = "id"
 	queries := make(map[string]string, 100)
 	startTime := time.Now() // Start the timer
 	sqlQueries := make([]string, len(writeMessages))
