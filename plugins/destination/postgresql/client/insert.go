@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/apache/arrow/go/v14/arrow"
 	"github.com/cloudquery/plugin-sdk/v4/message"
 	"github.com/cloudquery/plugin-sdk/v4/schema"
 	"github.com/jackc/pgx/v5"
@@ -43,7 +42,7 @@ func (c *Client) InsertBatch(ctx context.Context, messages message.WriteInserts)
 
 	for _, msg := range messages {
 		r := msg.Record
-		sql, err := c.generateSQL(queries, tables, r, true)
+		sql, err := c.generateSQL(queries, tables, r)
 		if err != nil {
 			return err
 		}
@@ -170,32 +169,4 @@ func pgErrToStr(err *pgconn.PgError) string {
 	sb.WriteString(", routine: ")
 	sb.WriteString(err.Routine)
 	return sb.String()
-}
-
-func (c *Client) generateSQL(queries map[string]string, tables schema.Tables, r arrow.Record, cachingEnabled bool) (string, error) {
-	md := r.Schema().Metadata()
-	tableName, ok := md.GetValue(schema.MetadataTableName)
-	if !ok {
-		return "", fmt.Errorf("table name not found in metadata")
-	}
-	if _, ok = c.pgTablesToPKConstraints[tableName]; !ok {
-		return "", fmt.Errorf("table %s not found", tableName)
-	}
-	if cachingEnabled {
-		if sql, ok := queries[tableName]; ok {
-			return sql, nil
-		}
-	}
-	table := tables.Get("test") // will always be present, panic should be produced if not
-	var sql string
-	if len(table.PrimaryKeysIndexes()) > 0 {
-		sql = c.upsert(table)
-	} else {
-		sql = c.insert(table)
-	}
-
-	if cachingEnabled {
-		queries[tableName] = sql
-	}
-	return sql, nil
 }
