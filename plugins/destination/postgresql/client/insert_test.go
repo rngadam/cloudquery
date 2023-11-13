@@ -8,47 +8,36 @@ import (
 	"github.com/cloudquery/plugin-sdk/v4/schema"
 )
 
-func TestGenInsert(t *testing.T) {
+func BenchmarkNoCache(b *testing.B) {
+	benchmarkQueries(b, false)
+}
+
+func BenchmarkCache(b *testing.B) {
+	benchmarkQueries(b, true)
+}
+
+func benchmarkQueries(b *testing.B, cache bool) {
+	b.Helper()
 	table := schema.TestTable("test", schema.TestSourceOptions{
 		SkipMaps:      true,
 		TimePrecision: time.Microsecond, // only us precision supported by time cols
 	})
-	writeMessages := make(message.WriteInserts, 100000)
+	writeMessages := make(message.WriteInserts, b.N)
 
+	tg := schema.NewTestDataGenerator()
 	for i := range writeMessages {
-		tg := schema.NewTestDataGenerator()
-
-		normalRecord := tg.Generate(table, schema.GenTestDataOptions{
-			MaxRows:       1,
-			TimePrecision: schema.TestSourceOptions{}.TimePrecision,
-		})
-		writeMessages[i] = &message.WriteInsert{
-			Record: normalRecord,
-		}
+		writeMessages[i] = &message.WriteInsert{Record: tg.Generate(table, schema.GenTestDataOptions{MaxRows: 1})}
 	}
+
 	cl := Client{}
 	cl.pgTablesToPKConstraints = map[string]string{}
 
 	cl.pgTablesToPKConstraints["test"] = "id"
 	queries := make(map[string]string, 100)
-	startTime := time.Now() // Start the timer
-	sqlQueries := make([]string, len(writeMessages))
+	sqlQueries := make([]string, b.N)
+	b.ResetTimer()
 	for i, msg := range writeMessages {
 		r := msg.Record
-		sqlQueries[i], _ = cl.generateSQL(queries, schema.Tables{table}, r, true)
-
+		sqlQueries[i], _ = cl.generateSQL(queries, schema.Tables{table}, r, cache)
 	}
-	elapsedTime := time.Since(startTime) // Calculate elapsed time
-	t.Logf("With caching enabled took %s", elapsedTime)
-	queries = make(map[string]string, 100)
-	startTimeNoCaching := time.Now() // Start the timer
-	sqlQueriesNoCaching := make([]string, len(writeMessages))
-	for i, msg := range writeMessages {
-		r := msg.Record
-		sqlQueriesNoCaching[i], _ = cl.generateSQL(queries, schema.Tables{table}, r, false)
-
-	}
-	elapsedTimeNoCaching := time.Since(startTimeNoCaching) // Calculate elapsed time
-	t.Logf("With caching disabled took %s", elapsedTimeNoCaching)
-
 }

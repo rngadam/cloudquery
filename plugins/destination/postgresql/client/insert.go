@@ -182,24 +182,20 @@ func (c *Client) generateSQL(queries map[string]string, tables schema.Tables, r 
 		return "", fmt.Errorf("table %s not found", tableName)
 	}
 	if cachingEnabled {
-		sql, ok := queries[tableName]
-		if !ok {
-			// cache the query
-			table := tables.Get("test") // will always be present, panic should be produced if not
-			if len(table.PrimaryKeysIndexes()) > 0 {
-				sql = c.upsert(table)
-			} else {
-				sql = c.insert(table)
-			}
-			queries[tableName] = sql
+		if sql, ok := queries[tableName]; ok {
+			return sql, nil
 		}
-		return sql, nil
 	}
 	table := tables.Get("test") // will always be present, panic should be produced if not
+	var sql string
 	if len(table.PrimaryKeysIndexes()) > 0 {
-		return c.upsert(table), nil
+		sql = c.upsert(table)
 	} else {
-		return c.insert(table), nil
+		sql = c.insert(table)
 	}
 
+	if cachingEnabled {
+		queries[tableName] = sql
+	}
+	return sql, nil
 }
